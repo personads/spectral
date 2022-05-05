@@ -52,6 +52,12 @@ def setup_filter(filter_id):
 				logging.error(f"[Error] eqalloc filter requires three arguments 'max_freqs', 'num_bands', 'band_idx'. Exiting.")
 				exit(1)
 			return PrismEncoder.gen_equal_allocation_filters(filter_args[0], filter_args[1])[filter_args[2]]
+		# parse band filter
+		elif filter_match['name'] == 'band':
+			if len(filter_args) != 3:
+				logging.error(f"[Error] band filter requires three arguments 'max_freqs', 'start_idx', 'end_idx'. Exiting.")
+				exit(1)
+			return PrismEncoder.gen_band_filter(filter_args[0], filter_args[1], filter_args[2])
 		elif filter_match['name'] == 'auto':
 			if len(filter_args) != 1:
 				logging.error(f"[Error] auto requires the argument 'max_freqs'. Exiting.")
