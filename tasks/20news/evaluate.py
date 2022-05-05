@@ -2,6 +2,8 @@
 
 import argparse, os, sys
 
+from sklearn.metrics import f1_score
+
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from utils.datasets import LabelledDataset
 
@@ -22,17 +24,27 @@ def main():
 	print(f"Loaded predicted data {prd_data} from '{args.prd_path}'.")
 
 	num_correct, num_total = 0, 0
+	targets, predictions = [], []
 	for idx in range(tgt_data.get_input_count()):
 		tgt_text, tgt_label = tgt_data[idx]
 		prd_text, prd_labels = prd_data[idx]
 
-		tgt_labels = [tgt_label for _ in range(len(prd_labels))]
+		if type(prd_labels) is list:
+			tgt_labels = [tgt_label for _ in range(len(prd_labels))]
+		else:
+			tgt_labels, prd_labels = [tgt_label], [prd_labels]
 
 		num_correct += sum([1 for tl, pl in zip(tgt_labels, prd_labels) if tl == pl])
 		num_total += len(tgt_labels)
 
+		targets += tgt_labels
+		predictions += prd_labels
+
 	accuracy = num_correct/num_total
-	print(f"Accuracy: {accuracy * 100:.2f}%")
+	print(f"Accuracy: {accuracy * 100:.2f}% ({num_correct}/{num_total})")
+
+	f1_macro = f1_score(targets, predictions, average='macro')
+	print(f"F1 (macro): {f1_macro * 100:.2f}%")
 
 
 if __name__ == '__main__':

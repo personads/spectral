@@ -27,6 +27,7 @@ def main():
 
 	# plot bars (A4: 210x240mm, width with margins = 6.3in)
 	colormap = mpl.cm.get_cmap('rainbow_r')
+	# colormap = mpl.cm.get_cmap('coolwarm_r')
 	mapnorm = mpl.colors.Normalize(vmin=0, vmax=experiments.shape[1])
 	fig, ax = plt.subplots(figsize=(6.3 * .75, 6.3 * .75))
 
