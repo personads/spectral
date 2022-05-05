@@ -8,7 +8,10 @@ import transformers
 
 
 class PrismEncoder(nn.Module):
-	def __init__(self, lm_name, frq_filter, frq_tuning=False, emb_tuning=False, specials=False, cache=None):
+	def __init__(
+			self, lm_name, frq_filter,
+			frq_tuning=False, emb_tuning=False,
+			emb_pooling=None, specials=False, cache=None):
 		super().__init__()
 		# load transformer
 		transformers.logging.set_verbosity_error()
@@ -20,6 +23,7 @@ class PrismEncoder(nn.Module):
 		# internal variables
 		self._lm_name = lm_name
 		self._specials = specials
+		self._emb_pooling = emb_pooling
 		# frequency filter parameter
 		self._frq_tuning = frq_tuning
 		self._frq_filter = None if frq_filter is None else nn.Parameter(frq_filter)
@@ -31,6 +35,7 @@ class PrismEncoder(nn.Module):
 		return \
 			f'<{self.__class__.__name__}: {self._lm.__class__.__name__} ("{self._lm_name}")' \
 			f', {"tunable" if self._emb_tuning else "static"} embeddings' \
+			f', {"no" if self._emb_pooling is None else "subword"} pooling' \
 			f', {f"{torch.sum(self._frq_filter != 0)}/{self._frq_filter.shape[0]}" if self._frq_filter is not None else "all"} bands active' \
 			f', {"tunable" if self._frq_tuning else "static"} filter' \
 			f'{f", with cache (size={len(self._cache)})" if self._cache is not None else ""}>'
@@ -38,6 +43,7 @@ class PrismEncoder(nn.Module):
 	def get_savable_objects(self):
 		objects = {}
 		objects['language_model_name'] = self._lm_name
+		objects['embedding_pooling'] = self._emb_pooling
 		if self._emb_tuning:
 			objects['language_model'] = self._lm
 		if self._frq_tuning:
@@ -56,15 +62,16 @@ class PrismEncoder(nn.Module):
 		torch.save(self.get_savable_objects(), path)
 
 	@staticmethod
-	def load(path, frq_filter=None, frq_tuning=False, emb_tuning=False, specials=False, cache=None):
+	def load(path, frq_filter=None, frq_tuning=False, emb_tuning=False, emb_pooling=None, specials=False, cache=None):
 		objects = torch.load(path)
 		# load necessary components
 		lm_name = objects['language_model_name']
+		emb_pooling = objects.get('embedding_pooling', emb_pooling)
 		frq_filter = objects.get('frequency_filter', frq_filter)
 		# construct model
 		encoder = PrismEncoder(
 			lm_name=lm_name, frq_filter=frq_filter, frq_tuning=frq_tuning, emb_tuning=emb_tuning,
-			specials=specials, cache=cache
+			emb_pooling=emb_pooling, specials=specials, cache=cache
 		)
 		# load LM (if available)
 		encoder._lm = objects.get('language_model', encoder._lm)
@@ -88,16 +95,25 @@ class PrismEncoder(nn.Module):
 			with torch.no_grad():
 				emb_tokens, att_tokens = self.embed(sentences)
 
-		# return unfiltered (if no filter is set)
-		if self._frq_filter is None:
-			return emb_tokens, att_tokens
-
-		# apply discrete cosine transform
-		if self._frq_tuning:
-			emb_tokens = self.filter(emb_tokens, att_tokens)
-		else:
-			with torch.no_grad():
+		# apply filter if set
+		if self._frq_filter is not None:
+			# apply discrete cosine transform
+			if self._frq_tuning:
 				emb_tokens = self.filter(emb_tokens, att_tokens)
+			else:
+				with torch.no_grad():
+					emb_tokens = self.filter(emb_tokens, att_tokens)
+
+		# pool token embeddings
+		if self._emb_pooling is not None:
+			# prepare sentence embedding tensor (batch_size, 1, emb_dim)
+			emb_pooled = torch.zeros((emb_tokens.shape[0], 1, emb_tokens.shape[2]), device=emb_tokens.device)
+			# iterate over sentences and pool relevant tokens
+			for sidx in range(emb_tokens.shape[0]):
+				emb_pooled[sidx, 0, :] = self._emb_pooling(emb_tokens[sidx, :torch.sum(att_tokens[sidx]), :])
+			emb_tokens = emb_pooled
+			# set embedding attention mask to cover each sentence embedding
+			att_tokens = torch.ones((att_tokens.shape[0], 1), dtype=torch.bool)
 
 		return emb_tokens, att_tokens
 
@@ -121,7 +137,7 @@ class PrismEncoder(nn.Module):
 		emb_tokens, att_tokens = hidden_states, tok_sentences['attention_mask'].bool()
 
 		# remove special tokens
-		if not self._specials:
+		if (not self._specials) and (self._emb_pooling is None):
 			# mask any non-padding token that is special
 			non_special_mask = ~tok_sentences['special_tokens_mask'].bool() & att_tokens  # (batch_size, max_len)
 			# new maximum length without special tokens
@@ -186,6 +202,16 @@ class PrismEncoder(nn.Module):
 			emb_filtered[sidx, :seq_len, :] = emb_recomposed
 
 		return emb_filtered
+
+	@staticmethod
+	def gen_band_filter(filter_size, start_idx, end_idx):
+		assert start_idx < end_idx < filter_size, \
+			f"[Error] Range {start_idx}-{end_idx} out of range for filter with {filter_size} frequencies."
+
+		filter = torch.zeros(filter_size)
+		filter[start_idx:end_idx+1] = 1
+
+		return filter
 
 	@staticmethod
 	def gen_equal_allocation_filters(filter_size, num_bands):
@@ -342,3 +368,23 @@ class PrismEncoder(nn.Module):
 			sen_hash = hashlib.md5(' '.join(sentence).encode('utf-8')).hexdigest()
 			# store cache entry
 			self._cache[sen_hash] = emb_tokens[sidx, :torch.sum(att_tokens[sidx]), :]  # (sen_len, emb_dim)
+
+
+#
+# Pooling Functions
+#
+
+
+def get_mean_embedding(token_embeddings):
+	return torch.mean(token_embeddings, dim=0)
+
+
+#
+# Helper Functions
+#
+
+def load_pooling_function(identifier):
+	if identifier == 'mean':
+		return get_mean_embedding
+	else:
+		raise ValueError(f"[Error] Unknown pooling specification '{identifier}'.")

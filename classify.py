@@ -10,7 +10,7 @@ from collections import defaultdict
 from utils.setup import *
 from utils.datasets import LabelledDataset
 from utils.training import classify_dataset
-from models.encoders import PrismEncoder
+from models.encoders import *
 from models.classifiers import *
 
 
@@ -35,6 +35,8 @@ def parse_arguments():
 	arg_parser.add_argument(
 		'-et', '--embedding_tuning', action='store_true', default=False,
 		help='set flag to tune the full model including embeddings (default: False)')
+	arg_parser.add_argument(
+		'-ep', '--embedding_pooling', choices=['mean'], help='embedding pooling strategy (default: None)')
 
 	# classifier setup
 	arg_parser.add_argument('classifier', help='classifier identifier')
@@ -98,16 +100,19 @@ def main():
 	frq_tuning = args.filter.startswith('auto(')
 	logging.info(f"Loaded frequency filter '{args.filter}'.")
 
+	# load pooling strategy
+	pooling_strategy = None if args.embedding_pooling is None else load_pooling_function(args.embedding_pooling)
+
 	# load encoder
 	encoder = PrismEncoder(
-		lm_name=args.lm_name, frq_filter=frq_filter,
-		frq_tuning=frq_tuning, emb_tuning=args.embedding_tuning,
+		lm_name=args.lm_name, frq_filter=frq_filter, frq_tuning=frq_tuning,
+		emb_tuning=args.embedding_tuning, emb_pooling=pooling_strategy,
 		cache=({} if args.embedding_caching else None))
 	logging.info(f"Constructed {encoder}.")
 	if args.prediction:
 		encoder = PrismEncoder.load(
-			model_path, frq_filter=frq_filter,
-			frq_tuning=frq_tuning, emb_tuning=args.embedding_tuning,
+			model_path, frq_filter=frq_filter, frq_tuning=frq_tuning,
+			emb_tuning=args.embedding_tuning, emb_pooling=pooling_strategy,
 			cache=({} if args.embedding_caching else None)
 		)
 		logging.info(f"Loaded pre-trained encoder from '{model_path}'.")

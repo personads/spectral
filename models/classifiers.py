@@ -10,11 +10,10 @@ from models.losses import *
 
 
 class EmbeddingClassifier(nn.Module):
-	def __init__(self, emb_model, lbl_model, classes, emb_pooling=None):
+	def __init__(self, emb_model, lbl_model, classes):
 		super().__init__()
 		# internal models
 		self._emb = emb_model
-		self._emb_pooling = emb_pooling
 		self._lbl = lbl_model
 		# internal variables
 		self._classes = classes
@@ -25,7 +24,6 @@ class EmbeddingClassifier(nn.Module):
 	def __repr__(self):
 		return f'''<{self.__class__.__name__}:
 	emb_model = {self._emb},
-	emb_pooling = {self._emb_pooling},
 	num_classes = {len(self._classes)}
 >'''
 
@@ -48,26 +46,12 @@ class EmbeddingClassifier(nn.Module):
 		lbl_model = objects['classifier']
 		# instantiate class using pre-trained label model and fixed encoder
 		return EmbeddingClassifier(
-			emb_model=emb_model, lbl_model=lbl_model, classes=classes, emb_pooling=emb_pooling
+			emb_model=emb_model, lbl_model=lbl_model, classes=classes
 		)
 
 	def forward(self, sentences):
 		# embed sentences (batch_size, seq_length) -> (batch_size, max_length, emb_dim)
-		emb_tokens, att_tokens = self._emb(sentences)
-
-		# pool token embeddings into sentence representations
-		if self._emb_pooling is not None:
-			# prepare sentence embedding tensor (batch_size, 1, emb_dim)
-			emb_sentences = torch.zeros((emb_tokens.shape[0], 1, emb_tokens.shape[2]), device=emb_tokens.device)
-			# iterate over sentences and pool relevant tokens
-			for sidx in range(emb_tokens.shape[0]):
-				emb_sentences[sidx, 0, :] = self._emb_pooling(emb_tokens[sidx, :torch.sum(att_tokens[sidx]), :])
-			# set embedding attention mask to cover each sentence embedding
-			att_sentences = torch.ones((att_tokens.shape[0], 1), dtype=torch.bool)
-		# when not pooling, the embedded sentences retain an embedding per token
-		else:
-			emb_sentences = emb_tokens
-			att_sentences = att_tokens
+		emb_sentences, att_sentences = self._emb(sentences)
 
 		# logits for all tokens in all sentences + padding -inf (batch_size, max_len, num_labels)
 		logits = torch.ones(
@@ -105,13 +89,12 @@ class EmbeddingClassifier(nn.Module):
 
 
 class LinearClassifier(EmbeddingClassifier):
-	def __init__(self, emb_model, classes, bias=True, emb_pooling=None):
+	def __init__(self, emb_model, classes, bias=True):
 		# instantiate linear classifier without bias
 		lbl_model = nn.Linear(emb_model.emb_dim, len(classes), bias=bias)
 
 		super().__init__(
-			emb_model=emb_model, lbl_model=lbl_model, classes=classes,
-			emb_pooling=emb_pooling
+			emb_model=emb_model, lbl_model=lbl_model, classes=classes
 		)
 
 
