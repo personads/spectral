@@ -46,7 +46,7 @@ evaluate() {
       --random_seed $SEED \
       --prediction
   fi
-  python tasks/ptb/evaluate.py $DATA_PATH/csv/test.csv $exp_dir/test-pred.csv -t "$LM"
+  python tasks/eval/tokens.py $DATA_PATH/csv/test.csv $exp_dir/test-pred.csv -t "$LM"
 }
 
 if [ ! -f $DATA_PATH/csv/train.csv ]; then

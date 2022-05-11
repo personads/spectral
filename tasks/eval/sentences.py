@@ -9,7 +9,7 @@ from utils.datasets import LabelledDataset
 
 
 def parse_arguments():
-	arg_parser = argparse.ArgumentParser(description='20 Newsgroups - Evaluate Accuracy')
+	arg_parser = argparse.ArgumentParser(description='Evaluate Sentence-level Classification')
 	arg_parser.add_argument('tgt_path', help='path to target CSV')
 	arg_parser.add_argument('prd_path', help='path to predicted CSV')
 	return arg_parser.parse_args()
@@ -45,6 +45,9 @@ def main():
 
 	f1_macro = f1_score(targets, predictions, average='macro')
 	print(f"F1 (macro): {f1_macro * 100:.2f}%")
+
+	f1_micro = f1_score(targets, predictions, average='micro')
+	print(f"F1 (micro): {f1_micro * 100:.2f}%")
 
 
 if __name__ == '__main__':

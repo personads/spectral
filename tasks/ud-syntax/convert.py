@@ -52,6 +52,7 @@ def main():
 			for sidx in range(len(treebank)):
 				# retrieve tokenized sentence
 				words = treebank[sidx].to_words()
+				words = [w.replace(' ', '') for w in words]  # remove spaces within words (e.g. FR-GSD)
 				# retrieve relevant labels
 				if args.task == 'relations':
 					_, labels = treebank[sidx].get_dependencies(include_subtypes=False)

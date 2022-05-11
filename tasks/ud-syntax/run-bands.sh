@@ -68,7 +68,7 @@ evaluate() {
     fi
     (( NUM_EXP++ ))
   fi
-  python tasks/ptb/evaluate.py $test_path $pred_path -t "$LM"
+  python tasks/eval/tokens.py $test_path $pred_path -t "$LM"
 }
 
 #

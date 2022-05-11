@@ -46,7 +46,7 @@ evaluate() {
       --random_seed $SEED \
       --prediction
   fi
-  python tasks/20news/evaluate.py $DATA_PATH/csv/20news-test.csv $exp_dir/20news-test-pred.csv
+  python tasks/eval/sentences.py $DATA_PATH/csv/20news-test.csv $exp_dir/20news-test-pred.csv
 }
 
 if [ ! -f $DATA_PATH/csv/20news-train.csv ]; then
