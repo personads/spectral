@@ -106,6 +106,8 @@ class LabelledDataset:
 
         lbl_cursor = -1
         for sidx in range(len(inputs)):
+            # convert token IDs to pieces
+            pieces = encoder._tok.convert_ids_to_tokens(tok_inputs['input_ids'][sidx])
             for tidx in range(tok_inputs['attention_mask'][sidx].sum()):
                 # skip special tokens
                 if (not encoder._specials) and (tok_inputs['special_tokens_mask'][sidx, tidx]):
@@ -114,7 +116,11 @@ class LabelledDataset:
                 if self.get_label_level() == 'token':
                     # check for start of new token
                     if tok_inputs['offset_mapping'][sidx, tidx, 0] == 0:
-                        lbl_cursor += 1
+                        # check for incorrect offset mapping in SentencePiece tokenizers (e.g. XLM-R)
+                        # example: ',' -> '▁', ',' with [0, 1], [0, 1] which increment the label cursor prematurely
+                        # https://github.com/huggingface/transformers/issues/9637
+                        if (tidx > 0) and (pieces[tidx - 1] != '▁'):
+                            lbl_cursor += 1
                     rep_labels.append(labels[lbl_cursor])
                 # repeat single sequence label across all sequence tokens
                 else:
@@ -125,12 +131,23 @@ class LabelledDataset:
     def save(self, path):
         with open(path, 'w', encoding='utf8', newline='') as output_file:
             csv_writer = csv.writer(output_file, quoting=csv.QUOTE_ALL)
-            csv_writer.writerow(['text', 'label'])
+            # construct header for single-/multi-sequence inputs + labels
+            header = [f'text{i}' for i in range(len(self._inputs[0]))] if type(self._inputs[0]) is tuple else ['text']
+            header.append('label')
+            csv_writer.writerow(header)
+            # iterate over instances
             for idx, text in enumerate(self._inputs):
+                row = []
+                # add one row each for multi-sequence inputs
+                if type(text) is tuple:
+                    row += list(text)
+                # convert token-level labels back to a single string
                 label = self._labels[idx]
                 if type(label) is list:
                     label = ' '.join([str(l) for l in label])
-                csv_writer.writerow([text, label])
+                row.append(label)
+                # write row
+                csv_writer.writerow(row)
 
     @staticmethod
     def from_path(path):
@@ -149,8 +166,14 @@ class LabelledDataset:
                     label = row['label'].split(' ')
                 else:
                     label = row['label']
+                # check if text consists of multiple sequences
+                if len(csv_reader.fieldnames) > 2:
+                    text = tuple([row[f'text{i}'] for i in range(len(csv_reader.fieldnames) - 1)])
+                # otherwise, simply retrieve the text field
+                else:
+                    text = row['text']
                 # append inputs and labels to overall dataset
-                inputs.append(row['text'])
+                inputs.append(text)
                 labels.append(label)
 
         return LabelledDataset(inputs, labels)

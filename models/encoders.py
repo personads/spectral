@@ -15,7 +15,7 @@ class PrismEncoder(nn.Module):
 		super().__init__()
 		# load transformer
 		transformers.logging.set_verbosity_error()
-		self._tok = transformers.AutoTokenizer.from_pretrained(lm_name, use_fast=True, add_prefix_space=True)
+		self._tok = transformers.AutoTokenizer.from_pretrained(lm_name, use_fast=True)
 		self._lm = transformers.AutoModel.from_pretrained(lm_name, return_dict=True)
 		self._emb_tuning = emb_tuning
 		# load cache
@@ -36,7 +36,7 @@ class PrismEncoder(nn.Module):
 			f'<{self.__class__.__name__}: {self._lm.__class__.__name__} ("{self._lm_name}")' \
 			f', {"tunable" if self._emb_tuning else "static"} embeddings' \
 			f', {"no" if self._emb_pooling is None else "subword"} pooling' \
-			f', {f"{torch.sum(self._frq_filter != 0)}/{self._frq_filter.shape[0]}" if self._frq_filter is not None else "all"} bands active' \
+			f', {f"{torch.sum(self._frq_filter != 0)}/{self._frq_filter.shape[0]}" if self._frq_filter is not None else "all"} freqs active' \
 			f', {"tunable" if self._frq_tuning else "static"} filter' \
 			f'{f", with cache (size={len(self._cache)})" if self._cache is not None else ""}>'
 
@@ -163,12 +163,24 @@ class PrismEncoder(nn.Module):
 
 	def tokenize(self, sentences, tokenized=False):
 		# tokenize batch: {input_ids: [[]], token_type_ids: [[]], attention_mask: [[]], special_tokens_mask: [[]]}
-		tok_sentences = self._tok(
-			sentences,
-			padding=True, truncation=True,
-			return_tensors='pt', return_special_tokens_mask=True,
-			return_offsets_mapping=True, is_split_into_words=tokenized
-		)
+		# check for multi-sentence inputs
+		if (len(sentences) > 0) and (type(sentences[0]) is tuple):
+			sentences1, sentences2 = [s[0] for s in sentences], [s[1] for s in sentences]
+			tok_sentences = self._tok(
+				sentences1, sentences2,
+				padding=True, truncation=True,
+				return_tensors='pt', return_special_tokens_mask=True,
+				return_offsets_mapping=True, is_split_into_words=tokenized
+			)
+		# use standard tokenization otherwise
+		else:
+			tok_sentences = self._tok(
+				sentences,
+				padding=True, truncation=True,
+				return_tensors='pt', return_special_tokens_mask=True,
+				return_offsets_mapping=True, is_split_into_words=tokenized
+			)
+
 		# move input to GPU (if available)
 		if torch.cuda.is_available():
 			tok_sentences = {k: v.to(torch.device('cuda')) for k, v in tok_sentences.items()}
