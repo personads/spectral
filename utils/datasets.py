@@ -141,6 +141,8 @@ class LabelledDataset:
                 # add one row each for multi-sequence inputs
                 if type(text) is tuple:
                     row += list(text)
+                else:
+                    row.append(text)
                 # convert token-level labels back to a single string
                 label = self._labels[idx]
                 if type(label) is list:
