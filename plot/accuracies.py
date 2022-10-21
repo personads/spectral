@@ -11,6 +11,9 @@ def parse_arguments():
 	arg_parser = argparse.ArgumentParser(description='Plot Accuracies per Frequency Band')
 	arg_parser.add_argument('accuracies', nargs='+', help='lists of accuracies per run (e.g. across initializations)')
 	arg_parser.add_argument('-xl', '--x_labels', nargs='+', help="names of frequency bands")
+	arg_parser.add_argument('-hx', '--hide_xlabel', action='store_true', default=False, help="flag to hide x-axis label")
+	arg_parser.add_argument('-hy', '--hide_ylabel', action='store_true', default=False, help="flag to hide y-axis label")
+	arg_parser.add_argument('-op', '--output_path', help="path to output file")
 	return arg_parser.parse_args()
 
 
@@ -28,16 +31,21 @@ def main():
 	# plot bars (A4: 210x240mm, width with margins = 6.3in)
 	colormap = mpl.cm.get_cmap('rainbow_r')
 	# colormap = mpl.cm.get_cmap('coolwarm_r')
-	mapnorm = mpl.colors.Normalize(vmin=0, vmax=experiments.shape[1])
-	fig, ax = plt.subplots(figsize=(6.3 * .75, 6.3 * .75))
+	mapnorm = mpl.colors.Normalize(vmin=1, vmax=experiments.shape[1]-1)
+	fig, ax = plt.subplots(figsize=(6.3 * .5, 6.3 * .4))
+
+	ax.tick_params(axis='both', labelsize='medium')
 
 	# set up x-axis
 	x_range = np.arange(experiments.shape[1])
 	ax.set_xticks(np.arange(experiments.shape[1]), args.x_labels)
-	ax.set_xlabel('Frequency Bands', fontsize='large', alpha=.6)
+	if not args.hide_xlabel:
+		ax.set_xlabel('Frequency Bands', fontsize='x-large', alpha=.6)
 
 	# set up y-axis
-	ax.set_ylabel('Accuracy', fontsize='large', alpha=.6)
+	ax.set_ylim(0, 100)
+	if not args.hide_ylabel:
+		ax.set_ylabel('Accuracy', fontsize='x-large', alpha=.6)
 
 	caption = ''
 	# calculate mean and stddev
@@ -48,7 +56,12 @@ def main():
 	bars = ax.bar(x_range, mean_scores, alpha=.7)
 	# set colors
 	for bidx, bar in enumerate(bars):
-		bar.set_color(colormap(mapnorm(bidx)))
+		if bidx == 0:
+			bar.set_color('darkgray')
+		elif bidx == len(bars) - 1:
+			bar.set_color('slateblue')
+		else:
+			bar.set_color(colormap(mapnorm(bidx)))
 
 	# add grid
 	ax.grid(axis='y', linestyle=':', linewidth=1.5)
@@ -61,6 +74,8 @@ def main():
 	print(f"Screenreader Caption: {caption}")
 
 	fig.tight_layout()
+	if args.output_path is not None:
+		plt.savefig(args.output_path, bbox_inches='tight', pad_inches=.05)
 	plt.show()
 
 
